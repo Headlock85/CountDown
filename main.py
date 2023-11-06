@@ -90,8 +90,14 @@ class App(ctk.CTk):
             self.time_var.set("+ " + time_to_str(self.over_time))
 
     def _est_end_date(self):
-        if self.seconds_left:
-            return "Fin estimée : " + (timedelta(seconds=self.seconds_left) + datetime.now()).strftime('%H:%M:%S')
+        _now = datetime.now()
+        _now_str = _now.strftime('%H:%M:%S')
+        _est = (timedelta(seconds=self.seconds_left) + _now).strftime('%H:%M:%S')
+        _est_45 = (timedelta(seconds=45*60 + self.seconds_left) + _now).strftime('%H:%M:%S')
+        if self.seconds_left and _now_str.split(":")[0] < 13:
+            return "Fin estimée : " + _est_45
+        elif self.seconds_left and _now_str.split(":")[0] >= 13:
+            return "Fin estimée : " + _est
         else:
             return "Vous pouvez débaucher"
 
