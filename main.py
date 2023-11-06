@@ -8,7 +8,9 @@ import xlsxwriter
 class App(ctk.CTk):
     def __init__(self, init_hours: int = 7, init_minutes: int = 0, init_seconds: int = 0,  **kwargs):
         super().__init__(**kwargs)
-        self.seconds_left = init_hours*3600 + init_minutes*60 + init_seconds
+        self.init_seconds_left = init_hours*3600 + init_minutes*60 + init_seconds
+        self.seconds_left: int = init_hours*3600 + init_minutes*60 + init_seconds
+        self.start_time = None
         self.current_pause = None
         self.pauses: [Pause] = []
         self.threshold = None
@@ -47,10 +49,18 @@ class App(ctk.CTk):
 
     def _start(self):
         if self.seconds_left and not self.over_time and not self.running and self.current_pause is None:
-            self.after(1000, self._minus_one_sec)
-            self.after(1000, self._start)
-            self.running = True
-            self.button.configure(command=self._pause, text="Pause")
+            if self.start_time is not None:
+                self._adjust()
+                self.after(1000, self._minus_one_sec)
+                self.after(1000, self._start)
+                self.running = True
+                self.button.configure(command=self._pause, text="Pause")
+            else:
+                self.start_time = datetime.now()
+                self.after(1000, self._minus_one_sec)
+                self.after(1000, self._start)
+                self.running = True
+                self.button.configure(command=self._pause, text="Pause")
         elif self.seconds_left and not self.over_time and self.running:
             self.after(1000, self._minus_one_sec)
             self.after(1000, self._start)
@@ -94,9 +104,9 @@ class App(ctk.CTk):
         _now_str = _now.strftime('%H:%M:%S')
         _est = (timedelta(seconds=self.seconds_left) + _now).strftime('%H:%M:%S')
         _est_45 = (timedelta(seconds=45*60 + self.seconds_left) + _now).strftime('%H:%M:%S')
-        if self.seconds_left and _now_str.split(":")[0] < 13:
+        if self.seconds_left and int(_now_str.split(":")[0]) < 13:
             return "Fin estimée : " + _est_45
-        elif self.seconds_left and _now_str.split(":")[0] >= 13:
+        elif self.seconds_left and int(_now_str.split(":")[0]) >= 13:
             return "Fin estimée : " + _est
         else:
             return "Vous pouvez débaucher"
@@ -108,6 +118,10 @@ class App(ctk.CTk):
         self.option_button.configure(state="disabled")
         self.save_button.configure(state="normal")
 
+    def _adjust(self):
+        seconds_spent = (datetime.now() - self.start_time).total_seconds()
+        total_pause_seconds = sum(pause.duration.total_seconds() for pause in self.pauses)
+        self.seconds_left = self.init_seconds_left - int(seconds_spent) + int(total_pause_seconds)
 
     def _export_pause(self):
         workbook = xlsxwriter.Workbook(f'{self.export_path}/Export_pauses_{datetime.now().strftime("%d%m%Y")}.xlsx')
