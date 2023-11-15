@@ -177,6 +177,7 @@ class Configure(ctk.CTkToplevel):
         self.minutes_entry = ctk.CTkEntry(master=self, textvariable=self.minutes_var, width=40, height=35, font=self.font)
         self.export_path_button = ctk.CTkButton(master=self, text="Dossier d'export", font=self.font, command=self._set_export_path)
         self.save_button = ctk.CTkButton(master=self, text="Enregistrer", font=self.font, command=self._save_config)
+        self.cancel_button = ctk.CTkButton(master=self, text="Annuler", font=self.font, command=self.destroy, fg_color="#fd6868", hover_color="red")
 
         self.hours_entry.bind("<FocusOut>", self.on_focus_out_hours)
         self.minutes_entry.bind("<FocusOut>", self.on_focus_out_minutes)
@@ -187,8 +188,9 @@ class Configure(ctk.CTkToplevel):
         self.hours_entry.grid(row=2, column=1, padx=(0, 2), pady=(0, 5), sticky='w')
         self.minutes_label.grid(row=2, column=2, padx=(3, 2), pady=(0, 5), sticky='ew')
         self.minutes_entry.grid(row=2, column=3, padx=(0, 5), pady=(0, 5), sticky='w')
-        self.export_path_button.grid(row=3, column=0, columnspan=4, padx=5, pady=(5, 2), sticky='ew')
-        self.save_button.grid(row=4, column=0, columnspan=4, padx=5, pady=(3, 10), sticky='ew')
+        self.export_path_button.grid(row=3, column=0, columnspan=4, padx=5, pady=(5, 5), sticky='ew')
+        self.save_button.grid(row=4, column=0, columnspan=4, padx=5, pady=(0, 5), sticky='ew')
+        self.cancel_button.grid(row=5, column=0, columnspan=4, padx=5, pady=(0, 10), sticky='ew')
 
     def on_focus_out_hours(self, event):
         var = self.hours_var
