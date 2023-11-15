@@ -45,7 +45,7 @@ def get_agt_info(badge_number, detail="week"):
     json_result = req.json()
 
     if detail == "week":
-        return json_result
+        return json_result['Resultat']
 
     elif detail == "day":
         current_day = _now.strftime("%d/%m/%Y")
@@ -55,5 +55,4 @@ def get_agt_info(badge_number, detail="week"):
 
 
 if __name__ == "__main__":
-    info = get_agt_info("0004FF589D")
-
+    pass
