@@ -1,250 +1,231 @@
-import tkinter.filedialog
-from datetime import datetime, timedelta
+import threading
+import time
+from datetime import datetime
+import CTkTable
 import customtkinter as ctk
-from tktooltip import *
-import xlsxwriter
+import agt_api
+
+
+class LoginWindow(ctk.CTk):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.badge_var = ctk.StringVar(master=self, value='001234ABCD')
+        self.time_var = ctk.StringVar(master=self, value='07:00')
+        self.warn_frame = ctk.CTkFrame(master=self, fg_color="#FF6666")
+
+        title_font = ctk.CTkFont(family="Terminal", size=32, weight='bold')
+        bold_font = ctk.CTkFont(family="Terminal", size=16, weight='bold')
+        font = ctk.CTkFont(family="Terminal", size=16)
+
+        warn_label = ctk.CTkLabel(master=self.warn_frame, font=font, text="Badge inconnu", text_color="#FFFFFF", bg_color='transparent', justify='center')
+
+        badge_entry = ctk.CTkEntry(master=self, font=font, textvariable=self.badge_var, justify='center')
+        time_entry = ctk.CTkEntry(master=self, font=font, textvariable=self.time_var, justify='center', width=80)
+
+        title_label = ctk.CTkLabel(master=self, text='Login', font=title_font)
+        badge_label = ctk.CTkLabel(master=self, text='BADGE', font=bold_font)
+        time_label = ctk.CTkLabel(master=self, text='TEMPS', font=bold_font)
+        start_button = ctk.CTkButton(master=self, text='Connexion', font=bold_font, border_spacing=10, command=self._on_connexion)
+
+        warn_label.grid(row=0, column=0, pady=5, padx=20, sticky='ew')
+
+        title_label.grid(row=0, column=0, padx=50, pady=20, sticky='ew')
+        badge_label.grid(row=1, column=0, padx=50, pady=(0, 2), sticky='ew')
+        badge_entry.grid(row=2, column=0, padx=50, pady=(0, 8), sticky='ew')
+        time_label.grid(row=3, column=0, padx=50, pady=(0, 2), sticky='ew')
+        time_entry.grid(row=4, column=0, padx=50, pady=(0, 8), sticky='ew')
+        start_button.grid(row=6, column=0, padx=50, pady=(7, 15), sticky='ew')
+
+        time_entry.bind('<FocusOut>', self._on_leave_time)
+        badge_entry.bind('<FocusOut>', self._on_leave_badge)
+
+    def _on_leave_time(self, event):
+        content = self.time_var.get()
+        if len(content) > 5:
+            content = content[:5]
+        try:
+            _time = content.split(':')
+            hr = _time[0]
+            mn = _time[1]
+            hr_int = int(hr)
+            mn_int = int(mn)
+        except IndexError or ValueError:
+            hr_int = 7
+            mn_int = 0
+        finally:
+            self.time_var.set(value=f"{hr_int:02}:{mn_int:02}")
+
+    def _on_leave_badge(self, event):
+        badge_number = self.badge_var.get()
+        ecart = 10 - len(badge_number)
+        if ecart > 0:
+            self.badge_var.set("0" * ecart + badge_number)
+        elif ecart < 0:
+            self.badge_var.set(badge_number[-10:])
+
+    def _on_connexion(self):
+        badge_number = self.badge_var.get()
+        try:
+            time_lst = self.time_var.get().split(':')
+            seconds = int(time_lst[0])*3600 + int(time_lst[1])*60
+        except IndexError or ValueError:
+            self.warn_frame.grid(row=5, column=0, padx=20, pady=5, sticky='ew')
+            return 0
+        is_allowed = agt_api.check_badge_number(badge_number)
+        if is_allowed:
+            self.destroy()
+            time_app = App(badge_number=badge_number, seconds_left=seconds)
+            time_app.mainloop()
+        else:
+            self.warn_frame.grid(row=5, column=0, padx=20, pady=5, sticky='ew')
+
+
+class DetailFrame(CTkTable.CTkTable):
+    def __init__(self, master: any, **kwargs):
+        h_font = ctk.CTkFont(family="Terminal", size=16, weight="bold")
+        self.font = ctk.CTkFont(family="Terminal", size=16)
+        super().__init__(master, column=2, row=1, values=[["Heure", "Action"]], font=h_font, **kwargs)
+        self.edit_column(0, width=50)
+        self.index = 1
+
+    def add_action(self, action_str, in_out):
+        time_str = datetime.now().strftime("%H:%M")
+        if in_out:
+            color = "#298a0b"
+        else:
+            color = "#910c0c"
+        self.add_row([time_str, action_str], text_color=color)
+        self.edit_column(0, width=50)
+        self.index += 1
+
+
+class CountDown(ctk.CTkFrame):
+    def __init__(self, master: any, seconds_left, precision="seconds", **kwargs):
+        super().__init__(master, **kwargs)
+        self.seconds_left = seconds_left
+        self.precision = precision
+        self.start_time = datetime.now()
+        self.is_running = False
+
+        self.time_var = ctk.StringVar(master=self, value=self.estimate_time_string())
+
+        font = ctk.CTkFont(family="Terminal", size=32)
+
+        time_label = ctk.CTkLabel(master=self, textvariable=self.time_var, font=font, justify='center')
+        time_label.grid(row=0, column=0, padx=50, pady=10, sticky='ew')
+
+    def start(self):
+        if not self.is_running:
+            self.is_running = True
+            self.start_time = datetime.now()
+
+    def stop(self):
+        if self.is_running:
+            self.is_running = False
+            end_time = datetime.now()
+            self.seconds_left = self.seconds_left - (end_time - self.start_time).total_seconds()
+
+    def estimate_time(self):
+        if self.is_running:
+            est_now = datetime.now()
+            est_seconds_left = self.seconds_left - (est_now - self.start_time).total_seconds()
+            return est_seconds_left
+        else:
+            return self.seconds_left
+
+    def estimate_time_string(self):
+        seconds_left = self.estimate_time()
+        hours_left = int(seconds_left // 3600)
+        minutes_left = int((seconds_left - hours_left*3600) // 60)
+        seconds = int(seconds_left - hours_left*3600 - minutes_left*60)
+
+        if self.precision == "seconds":
+            return f"{hours_left:02}:{minutes_left:02}:{seconds:02}"
+        elif self.precision == "minutes":
+            return f"{hours_left:02}:{minutes_left:02}"
 
 
 class App(ctk.CTk):
-    def __init__(self, init_hours: int = 7, init_minutes: int = 0, init_seconds: int = 0,  **kwargs):
+    def __init__(self, badge_number, seconds_left, **kwargs):
         super().__init__(**kwargs)
-        self.init_seconds_left = init_hours*3600 + init_minutes*60 + init_seconds
-        self.seconds_left: int = init_hours*3600 + init_minutes*60 + init_seconds
-        self.start_time = None
-        self.current_pause = None
-        self.pauses: [Pause] = []
-        self.threshold = None
-        self.running = False
-        self.over_time = 0
+        self.badge_number = badge_number
+        self.countdown = CountDown(master=self, seconds_left=seconds_left)
+        self.drop_down = False
 
-        self.export_path = ""
-
-        self.resizable(width=False, height=False)
+        self.resizable(False, False)
         self.overrideredirect(True)
         self.geometry("+0+0")
 
-        self.min_font = ctk.CTkFont(family='Terminal', size=14)
-        self.font = ctk.CTkFont(family='Terminal', size=16)
-        self.max_font = ctk.CTkFont(family='Terminal', size=32)
-        self.time_var = ctk.StringVar(master=self, value=time_to_str(self.seconds_left))
+        threading.Thread(target=self.cron, daemon=True).start()
 
-        self.time_frame = ctk.CTkFrame(master=self)
-        self.time_label = ctk.CTkLabel(master=self.time_frame, textvariable=self.time_var, font=self.max_font)
-        self.button = ctk.CTkButton(master=self.time_frame, text="Start", command=self._start, font=self.font)
-        self.stop_button = ctk.CTkButton(master=self.time_frame, text="Fin", fg_color="#fd6868", hover_color="red", command=self._end, font=self.font)
-        self.button_frame = ctk.CTkFrame(master=self)
-        self.option_button = ctk.CTkButton(master=self.button_frame, text="Cfg.", width=5, font=self.font, command=lambda: Configure(self))
-        self.save_button = ctk.CTkButton(master=self.button_frame, text="Save", width=5, font=self.font, command=self._export_pause, state="disabled")
-        self.exit_button = ctk.CTkButton(master=self.button_frame, text="X", width=17, height=5, font=self.min_font, command=self.destroy, fg_color="#fd6868", hover_color="red")
-        self.tooltip = ToolTip(widget=self.time_label, msg=self._est_end_date)
+        font = ctk.CTkFont(family="Terminal", size=16)
+        self.badge_button = ctk.CTkButton(master=self, text='Badger', width=90, font=font, command=self._badger, fg_color="#4287f5")
+        self.pause_button = ctk.CTkButton(master=self, text='Pause', width=90, font=font, command=self._pause, fg_color="#4287f5")
+        exit_button = ctk.CTkButton(master=self, text='X', width=15, font=font, fg_color='#FE6666', hover_color='red', command=self.destroy)
+        self.precision_tick = ctk.CTkButton(master=self, text='S', width=15, height=27, font=font,
+                                            command=self._precision)
+        self.detail_button = ctk.CTkButton(master=self, text='+', width=15, height=28, font=font, command=self._detail)
+        self.detail_frame = DetailFrame(master=self)
 
-        self.time_frame.grid(row=0, column=0, padx=2, pady=2, sticky='ew')
-        self.time_label.grid(row=0, column=0, columnspan=2, padx=2, pady=(12, 0), sticky='ew')
-        self.button.grid(row=1, column=0, padx=2, pady=(12, 2), sticky='ew')
-        self.stop_button.grid(row=1, column=1, pady=(12,2), padx=2, sticky='ew')
-        self.button_frame.grid(row=0, column=1, padx=2, pady=2, sticky='ew')
-        self.exit_button.grid(row=0, column=0, padx=2, pady=2, sticky='ew')
-        self.option_button.grid(row=1, column=0, padx=2, pady=2, sticky='ew')
-        self.save_button.grid(row=2, column=0, padx=2, pady=2, sticky='ew')
+        self.countdown.grid(row=0, column=0, columnspan=2, rowspan=2, padx=(5, 1), pady=(5, 1), sticky='ew')
+        self.badge_button.grid(row=2, column=0, padx=(5, 1), pady=(1, 1), sticky='ew')
+        self.pause_button.grid(row=2, column=1, padx=(1, 1), pady=(1, 1), sticky='ew')
+        exit_button.grid(row=0, column=2, padx=(2, 5), pady=(5, 1), sticky='new')
+        self.precision_tick.grid(row=1, column=2, rowspan=1, padx=(2, 5), pady=(1, 1), sticky='nsew')
+        self.detail_button.grid(row=2, column=2, rowspan=1, padx=(2, 5), pady=(1, 1), sticky='nsew')
 
-    def _start(self):
-        if self.seconds_left and not self.over_time and not self.running and self.current_pause is None:
-            if self.start_time is not None:
-                self._adjust()
-                self.after(1000, self._minus_one_sec)
-                self.after(1000, self._start)
-                self.running = True
-                self.button.configure(command=self._pause, text="Pause")
-            else:
-                self.start_time = datetime.now()
-                self.after(1000, self._minus_one_sec)
-                self.after(1000, self._start)
-                self.running = True
-                self.button.configure(command=self._pause, text="Pause")
-        elif self.seconds_left and not self.over_time and self.running:
-            self.after(1000, self._minus_one_sec)
-            self.after(1000, self._start)
-        elif not self.seconds_left and not self.over_time and self.running:
-            self.after(1000, self._minus_one_sec_overtime)
-            self.after(1000, self._start)
-            self.time_label.configure(text_color="green")
-            self.threshold = datetime.now()
-        elif not self.seconds_left and self.over_time and self.running:
-            self.after(1000, self._minus_one_sec_overtime)
-            self.after(1000, self._start)
-        elif not self.seconds_left and self.over_time and not self.running and self.current_pause is None:
-            self.after(1000, self._minus_one_sec_overtime)
-            self.after(1000, self._start)
-            self.running = True
-            self.button.configure(command=self._pause, text="Pause")
+    def cron(self):
+        while True:
+            time_left = self.countdown.estimate_time_string()
+            if time_left != self.countdown.time_var:
+                self.countdown.time_var.set(time_left)
+            time.sleep(1)
 
     def _pause(self):
-        self.running = False
-        self.current_pause = Pause()
-        self.button.configure(text="Reprendre", command=self._end_pause)
-
-    def _end_pause(self):
-        self.current_pause.stop()
-        self.pauses.append(self.current_pause)
-        self.current_pause = None
-        self._start()
-
-    def _minus_one_sec(self):
-        if self.current_pause is None:
-            self.seconds_left -= 1
-            self.time_var.set(time_to_str(self.seconds_left))
-
-    def _minus_one_sec_overtime(self):
-        if self.current_pause is None:
-            self.over_time += 1
-            self.time_var.set("+ " + time_to_str(self.over_time))
-
-    def _est_end_date(self):
-        _now = datetime.now()
-        _now_str = _now.strftime('%H:%M:%S')
-        _est = (timedelta(seconds=self.seconds_left) + _now).strftime('%H:%M:%S')
-        _est_45 = (timedelta(seconds=45*60 + self.seconds_left) + _now).strftime('%H:%M:%S')
-        if self.seconds_left and int(_now_str.split(":")[0]) < 13:
-            return "Fin estimée : " + _est_45
-        elif self.seconds_left and int(_now_str.split(":")[0]) >= 13:
-            return "Fin estimée : " + _est
+        if self.countdown.is_running:
+            print('Pause start')
+            self.countdown.stop()
+            self.detail_frame.add_action("Pause", False)
+            self.pause_button.configure(fg_color="#299133", hover_color="#1d6624")
         else:
-            return "Vous pouvez débaucher"
+            print('Pause stop')
+            self.countdown.start()
+            self.detail_frame.add_action("Pause", True)
+            self.pause_button.configure(fg_color="#4287f5", hover_color="#224680")
+        agt_api.agt_action(action="PAUSE", badge_number=self.badge_number)
 
-    def _end(self):
-        self._pause()
-        self.button.configure(text="-", state="disabled")
-        self.stop_button.configure(state="disabled")
-        self.option_button.configure(state="disabled")
-        self.save_button.configure(state="normal")
+    def _badger(self):
+        if self.countdown.is_running:
+            print('Badging out')
+            self.countdown.stop()
+            self.detail_frame.add_action("Badge", False)
+            self.badge_button.configure(fg_color="#4287f5", hover_color="#224680")
+        else:
+            print('Badging in')
+            self.countdown.start()
+            self.detail_frame.add_action("Badge", True)
+            self.badge_button.configure(fg_color="#299133", hover_color="#1d6624")
+        agt_api.agt_action(action="BADGER", badge_number=self.badge_number)
 
-    def _adjust(self):
-        seconds_spent = (datetime.now() - self.start_time).total_seconds()
-        total_pause_seconds = sum(pause.duration.total_seconds() for pause in self.pauses)
-        self.seconds_left = self.init_seconds_left - int(seconds_spent) + int(total_pause_seconds)
+    def _detail(self):
+        if not self.drop_down:
+            self.detail_frame.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky='ew')
+            self.detail_button.configure(text="-")
+        else:
+            self.detail_frame.grid_remove()
+            self.detail_button.configure(text="+")
+        self.drop_down = not self.drop_down
 
-    def _export_pause(self):
-        workbook = xlsxwriter.Workbook(f'{self.export_path}/Export_pauses_{datetime.now().strftime("%d%m%Y")}.xlsx')
-        worksheet = workbook.add_worksheet()
-        worksheet.write('A1', 'Test', 'bold')
-        for i, pause in enumerate(self.pauses):
-            worksheet.write(i + 1, 0, f"{'{:2d}'.format(pause.start_time.hour)}:{'{:2d}'.format(pause.start_time.minute)}")
-            worksheet.write(i + 1, 1, f"{'{:2d}'.format(pause.end_time.hour)}:{'{:2d}'.format(pause.end_time.minute)}")
-            worksheet.write(i + 1, 2, secs_to_mins(pause.duration))
-        workbook.close()
-
-
-
-
-
-class Pause:
-    def __init__(self):
-        self.start_time = datetime.now()
-        self.end_time: datetime = None
-        self.duration: timedelta = None
-
-    def __repr__(self):
-        return f"Pause de {self.start_time.strftime('%H:%M')} à {self.end_time.strftime('%H:%M')}\nDurée : {secs_to_mins(self.duration)}"
-
-    def stop(self):
-        self.end_time = datetime.now()
-        self.duration = self.end_time - self.start_time
+    def _precision(self):
+        precision = self.countdown.precision
+        if precision == "seconds":
+            self.countdown.precision = "minutes"
+            self.precision_tick.configure(text='M')
+        elif precision == "minutes":
+            self.countdown.precision = "seconds"
+            self.precision_tick.configure(text='S')
 
 
-class Configure(ctk.CTkToplevel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.export_path = "/"
-        self.reste_a_bosser_hrs = 0
-        self.reste_a_bosser_mins = 0
-
-        self.resizable(False, False)
-        self.title("Config")
-        self.overrideredirect(True)
-        self.geometry("+0+90")
-
-        self.font = ctk.CTkFont(family='Terminal', size=16)
-        self.max_font = ctk.CTkFont(family='Terminal', size=32)
-
-        self.hours_var = ctk.StringVar(master=self, value="07")
-        self.minutes_var = ctk.StringVar(master=self, value="00")
-
-        self.title_label = ctk.CTkLabel(master=self, text="Config", font=self.max_font)
-        self.time_label = ctk.CTkLabel(master=self, text="Temps de travail", font=self.font)
-        self.hours_label = ctk.CTkLabel(master=self, text="H :", font=self.font)
-        self.hours_entry = ctk.CTkEntry(master=self, textvariable=self.hours_var, width=40, height=35, font=self.font)
-        self.minutes_label = ctk.CTkLabel(master=self, text="M :", font=self.font)
-        self.minutes_entry = ctk.CTkEntry(master=self, textvariable=self.minutes_var, width=40, height=35, font=self.font)
-        self.export_path_button = ctk.CTkButton(master=self, text="Dossier d'export", font=self.font, command=self._set_export_path)
-        self.save_button = ctk.CTkButton(master=self, text="Enregistrer", font=self.font, command=self._save_config)
-        self.cancel_button = ctk.CTkButton(master=self, text="Annuler", font=self.font, command=self.destroy, fg_color="#fd6868", hover_color="red")
-
-        self.hours_entry.bind("<FocusOut>", self.on_focus_out_hours)
-        self.minutes_entry.bind("<FocusOut>", self.on_focus_out_minutes)
-
-        self.title_label.grid(row=0, column=0, columnspan=4, padx=5, pady=(15, 10), sticky='ew')
-        self.time_label.grid(row=1, column=0, columnspan=4, padx=5, pady=(5, 2), sticky='w')
-        self.hours_label.grid(row=2, column=0, padx=(5, 2), pady=(0, 5), sticky='ew')
-        self.hours_entry.grid(row=2, column=1, padx=(0, 2), pady=(0, 5), sticky='w')
-        self.minutes_label.grid(row=2, column=2, padx=(3, 2), pady=(0, 5), sticky='ew')
-        self.minutes_entry.grid(row=2, column=3, padx=(0, 5), pady=(0, 5), sticky='w')
-        self.export_path_button.grid(row=3, column=0, columnspan=4, padx=5, pady=(5, 5), sticky='ew')
-        self.save_button.grid(row=4, column=0, columnspan=4, padx=5, pady=(0, 5), sticky='ew')
-        self.cancel_button.grid(row=5, column=0, columnspan=4, padx=5, pady=(0, 10), sticky='ew')
-
-    def on_focus_out_hours(self, event):
-        var = self.hours_var
-        try:
-            if int(var.get()) > 23:
-                var.set("23")
-            elif int(var.get()) < 0:
-                var.set("00")
-            else:
-                var.set("{:02d}".format(int(var.get())))
-        except ValueError:
-            var.set("00")
-
-    def on_focus_out_minutes(self, event):
-        var = self.minutes_var
-        try:
-            if int(var.get()) > 60:
-                var.set("59")
-            elif int(var.get()) < 0:
-                var.set("00")
-            else:
-                var.set("{:02d}".format(int(var.get())))
-        except ValueError:
-            var.set("00")
-
-    def _set_export_path(self):
-        directory = tkinter.filedialog.askdirectory()
-        if directory:
-            self.export_path = directory
-            self.export_path_button.configure(fg_color="green", text=directory.split('/')[-1])
-
-    def _save_config(self):
-        self.reste_a_bosser_hrs = int(self.hours_var.get())
-        self.reste_a_bosser_mins = int(self.minutes_var.get())
-        self.master.seconds_left = self.reste_a_bosser_hrs*3600 + self.reste_a_bosser_mins*60
-        self.master.export_path = self.export_path
-        self.master.time_var.set(value=time_to_str(self.master.seconds_left))
-        self.destroy()
-
-
-def time_to_str(seconds: int):
-    hrs = seconds//3600
-    mins = (seconds % 3600)//60
-    seconds = (seconds % 3600) % 60
-    return '{:02d}'.format(hrs) + ":" + '{:02d}'.format(mins) + ":" + '{:02d}'.format(seconds)
-
-
-def secs_to_mins(delta: timedelta):
-    secs = int(delta.total_seconds())
-    minutes = secs // 60
-    secs_left = secs % 60
-    return f"{'{:02d}'.format(minutes)}:{'{:02d}'.format(secs_left)}"
-
-
-if __name__ == '__main__':
-    app = App()
-    app.mainloop()
+if __name__ == "__main__":
+    login = LoginWindow()
+    login.mainloop()

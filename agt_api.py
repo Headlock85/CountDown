@@ -15,7 +15,7 @@ def agt_action(action, badge_number):
     else:
         print("Action inconnue. Les actions valables sont PAUSE et BADGER")
         return 1
-    req = requests.get(url=bdg_url, params={"badg": badg, "TERM": "099"})
+    req = requests.get(url=bdg_url, params={"BADG": badg, "TERM": "099"})
     print(req.content)
     return 0
 
@@ -54,5 +54,13 @@ def get_agt_info(badge_number, detail="week"):
                 return jour
 
 
+def check_badge_number(badge_number):
+    rq = requests.post(url=fiche_info_url, data={"Badge": badge_number, "recuperation_fiche": "true"})
+    if rq.text == "0":
+        return False
+    else:
+        return True
+
+
 if __name__ == "__main__":
-    pass
+    check_badge_number("0000000000000007")
